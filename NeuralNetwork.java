@@ -183,6 +183,9 @@ public class NeuralNetwork
 
 		for (int i = 0; i < inputLayer.length; i++)
 			inputLayer[i].setVal(input[i]);
+		
+		for (int i = 0; i < outputLayer.length; i++)
+			inputLayer[i].setVal(input[i]);
 
 		/*
 		 * Set the output derivatives based on the derivatives of the error and adds to
@@ -240,6 +243,17 @@ public class NeuralNetwork
 	{
 		for (Node outputNode : outputLayer)
 			outputNode.updateWeight();
+	}
+	
+	/**
+	 * Scale all weights by scale factor
+	 * 
+	 * @param scale	Scale factor
+	 */
+	public void scaleWeight(double scale)
+	{
+		for(int i = 0; i < outputLayer.length; i++)
+			outputLayer[i].scaleWeights(scale, i == 0);
 	}
 	
 	/**
@@ -474,7 +488,7 @@ public class NeuralNetwork
 			derWeight = new double[prevLayer.length + 1];
 
 			for (int i = 0; i < weight.length; i++)
-				weight[i] = (Math.random() * 2 - 1) * 0.1;
+				weight[i] = (Math.random() * 2 - 1) * 0.01;
 
 			activation = activate;
 			activationDer = activateDer;
@@ -697,11 +711,27 @@ public class NeuralNetwork
 		 */
 		private double clip(double der)
 		{
-			if (der < 0.05 && der > -0.05)
+			if (der < 0.001 && der > -0.001)
 				return der;
 			if (der > 0)
-				return 0.05;
-			return -0.05;
+				return 0.001;
+			return -0.001;
+		}
+		
+		/**
+		 * Scale all weights by scale factor
+		 * 
+		 * @param scale	Scale factor
+		 */
+		public void scaleWeights(double scale, boolean recur)
+		{
+			for(int i = 0; i < weight.length; i++)
+				weight[i] *= scale;
+			
+			if(recur && !prevLayer.equals(inputLayer))
+				for(int i = 0; i < prevLayer.length; i++)
+					prevLayer[i].scaleWeights(scale, i == 0);
+					
 		}
 
 		/**
