@@ -1,3 +1,4 @@
+import java.util.*;
 import java.util.Scanner;
 
 public class ConnectFourAITest
@@ -5,63 +6,19 @@ public class ConnectFourAITest
 	public static void main(String[] args)
 	{
 		
-		NeuralNetwork policy = new NeuralNetwork("C:\\Users\\Agi\\eclipse-workspace\\Connect Four AI\\src\\Save.txt", (x) -> (x > 0) ? x : 0, (x, y) -> (y > 0) ? 1 : 0);
 		
-		policy.setOutputActivation((x) -> (1 / (Math.exp(x * -1) + 1)), (x, y) -> x - x * x);
+
+	}
+	
+	public static void add(List<Double> list, double in, double threshold)
+	{
+		int dif = list.size() / 4;
+		int index = 2 * dif;
 		
-		double[] board = new double[42];
+		while(dif >= 1)
+			index += (in > list.get(index) && Math.random() > threshold) ? dif : -1 * dif;
 		
-		int policyWin = 0;
-		int randomWin = 0;
-		
-		Scanner sc = new Scanner(System.in);
-		
-		for(int i = 0; i >= 0; i++)
-		{
-			double[] play = policy.calc(board);
-			
-			while(play(board, argMax(play)) == null)
-				play[argMax(play)] = 0;
-			
-			board = getNegative(play(board, argMax(play)));
-			
-			show(board);
-			
-			for(double value: play)
-				System.out.print(value + " ");
-			System.out.println();
-			
-			if(isWin(board))
-			{
-				policyWin++;
-				board = new double[42];
-				System.out.println(policyWin / Math.max(1, randomWin));
-			}
-				
-			if(isFull(board))
-				board = new double[42];
-			
-			
-			play = new double[7];
-			for(int j = 0; j < play.length; j++)
-				play[j] = Math.random();
-			
-			
-			
-			board = getNegative(play(board, sc.nextInt() - 1));
-			
-			//show(getNegative(board));
-			
-			if(isWin(board))
-			{
-				randomWin++;
-				board = new double[42];
-				System.out.println(policyWin / Math.max(1, randomWin));
-			}
-				
-			if(isFull(board))
-				board = new double[42];
-		}
+		list.add(index, in);
 	}
 	
 	public static double[] getNegative(double[] input)

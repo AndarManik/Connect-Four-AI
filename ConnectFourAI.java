@@ -6,83 +6,48 @@ public class ConnectFourAI
 	{
 		int[] dim = {42, 40, 30, 20, 7};
 
-		NeuralNetwork policy = new NeuralNetwork(dim, (x) -> (x > 0) ? x : 0, (x, y) -> (y > 0) ? 1 : 0);
+		NeuralNetwork policy = new NeuralNetwork(dim,
+				(x) -> (x > 0) ? x : 0, (x, y) -> (y > 0) ? 1 : 0);
 		policy.setOutputActivation((x) -> (1 / (Math.exp(x * -1) + 1)), (x, y) -> x - x * x);
 
-		List<double[]> boardSet = new ArrayList<double[]>();
-		List<double[]> playSet = new ArrayList<double[]>();
-		
-		double threshold = 0;
+		double[] board = new double[42];
+
+		int volume = 1000;
+
+		double period = 100;
 
 		for(int counter = 0; counter >= 0; counter++)
 		{
-			List<List<double[]>> data = getAmplifyData(policy, 0, threshold, (x) -> randomChoose(x));
-		
-			for(int i = data.get(1).size() - 1; i >= 0; i--)
-			{
-				boolean has1 = false;
-				for(double value: data.get(1).get(i))
-					if(value == 1.0)
-						has1 = true;
-				if(has1)
-				{
-					boardSet.add(data.get(0).remove(i));
-					playSet.add(data.get(1).remove(i));
-				}
-			}
+			double threshold = Math.cos(counter / period * Math.PI) * Math.cos(counter / period * Math.PI);
+			
+			List<List<double[]>> data = getAmplifyData(policy, board, volume,
+					threshold);
 
-			while(boardSet.size() > data.get(1).size() * 3)
-			{
-				boardSet.remove(0);
-				playSet.remove(0);
-			}
-			
-			int size = data.get(0).size();
-			
-			//if(size < 9000)
-				//threshold -= 0.001;
-			
-			//if(size > 15000 )
-				//threshold += 0.01;
-			
-			
- 
-			double[] nonCert = train(policy, data.get(0), data.get(1), 500, 25, (x) -> randomChoose(x));
+			double[] play = data.get(1).get(0);
 
-			double[] fullCert = train(policy, boardSet, playSet, 500, 25, (x) -> randomChoose(x));
+			while(play(board, argMax(play)) == null)
+				play[argMax(play)] = 0;
+
+			board = negative(play(board, argMax(play)));
+
+			if(isWin(board) || isFull(board))
+				board = new double[42];
+
+			double[] info = train(policy, data.get(0), data.get(1), 50, 100);
+
+			System.out.printf("%.5f      %.5f      %.5f\n", 100 * info[0], 100 * info[1], threshold);
 
 			policy.saveNetwork("C:\\Users\\Agi\\eclipse-workspace\\Connect Four AI\\src\\Save.txt");
-			
-			System.out.printf("ER:  %.5f  CR:  %.5f  l2:  %.2f  SZ:  %d  ", 
-					100 * nonCert[7], 
-					100 * nonCert[8],
-					nonCert[9],
-					data.get(0).size());
-
-			System.out.printf("ER:  %.5f  CR:  %.5f  SZ:  %d  ", 
-					100 * fullCert[7], 
-					100 * fullCert[8], 
-					boardSet.size());
-
-			double sum = 0;
-
-			for(int i = 0; i < 7; i++)
-				sum += fullCert[i] * fullCert[i];
-
-			for(int i = 0; i < 7; i++)
-				System.out.printf("%.3f  ", fullCert[i] / Math.sqrt(sum));
-
-			System.out.printf("%.3f  \n", threshold);
 		}
 	}
 
 	public static double[] train(NeuralNetwork neuralNet, List<double[]> input, List<double[]> output, int batchSize,
-			int epoch, Selecter s)
+			int epoch)
 	{
 		double error = 0;
 		double certainty = 0;
 
-		double[] data = new double[10];
+		double[] data = new double[2];
 
 		for(int counter = 0; counter < epoch; counter++)
 		{
@@ -90,89 +55,95 @@ public class ConnectFourAI
 			{
 				int pos = i * input.size() / batchSize + (int) (Math.random() * input.size() / batchSize); // non
 																											// coliding
-																											// random
-				error += neuralNet.backProp(input.get(pos), l2Norm(output.get(pos)));
+																											// // random
+				error += neuralNet.backProp(input.get(pos), normalize(output.get(pos)));
 				double[] play = neuralNet.calc(input.get(pos));
-				certainty += play[s.choose(l2Norm(output.get(pos)))];
-
-				data[s.choose(l2Norm(output.get(pos)))]++;
-				
-				data[9] += l2(play);
+				certainty += play[argMax(output.get(pos))];
 			}
 
 			neuralNet.updateWeight();
 		}
 
-		data[7] = error;
-		data[8] = certainty;
+		data[0] = error;
+		data[1] = certainty;
 
 		for(int i = 0; i < data.length; i++)
 			data[i] /= (batchSize * epoch);
 		return data;
 	}
 
-	public static List<List<double[]>> getAmplifyData(NeuralNetwork policy, int depth, double threshold, Selecter s)
+	public static List<List<double[]>> getAmplifyData(NeuralNetwork policy, double[] board, int volume,
+			double threshold)
 	{
-		ArrayList<List<double[]>> output = new ArrayList<List<double[]>>();
-
-		output.add(new ArrayList<double[]>());
-		output.add(new ArrayList<double[]>());
-
-		for(int pos = 0; pos < 7; pos++)
+		List<BoardPlay> boardPlay = new ArrayList<BoardPlay>();
+		List<BoardStor> boardStor = new ArrayList<BoardStor>();
+		boardPlay.add(new BoardPlay(board, policy.calc(board)));
+		
+		int counter = 0;
+		
+		while(counter < volume && (boardStor.size() > 0 || counter == 0))
 		{
-			double[] board = getNegative(play(new double[42], pos));
-			double[] play = normalize(getAmpPlay(policy, output, board, depth, threshold));
-			output.get(0).add(board);
-			output.get(1).add(play);
-
-			while(!isWin(board) && !isFull(board))
+			for(int i = 0; i < 7; i++)
 			{
-				double[] curPlay = l2Norm(play);
-
-				while(play(board, s.choose(curPlay)) == null)
-					curPlay[s.choose(curPlay)] = 0;
-
-				board = getNegative(play(board, s.choose(curPlay)));
-				play = normalize(getAmpPlay(policy, output, board, depth, threshold));
-				output.get(0).add(board);
-				output.get(1).add(play);
+				double[] curBoard = play(boardPlay.get(counter).board, i);
+				
+				if(curBoard == null)
+					boardPlay.get(counter).play[i] = 0;
+				else if(isWin(curBoard) || isFull(curBoard))
+					boardPlay.get(counter).play[i] = 1;
+				else 
+					add(boardStor, new BoardStor(curBoard, counter, i, boardPlay.get(counter).play[i]));
 			}
-
-			output.get(0).remove(output.get(0).size() - 1);
-			output.get(1).remove(output.get(1).size() - 1);
+			
+			boardPlay.add(new BoardPlay(negative(boardStor.get(0).board), policy.calc(boardStor.get(0).board)));
+			boardPlay.get(boardStor.get(0).ind).refadd(boardStor.get(0).pos, counter);
+			
+			boardStor.remove(0);
+			
+			counter++;
 		}
+		List<List<double[]>> output = new ArrayList<List<double[]>>();
+		output.add(new ArrayList<double[]>());
+		output.add(new ArrayList<double[]>());
 
+		for(int i = boardPlay.size() - 1; i >= 0; i--)
+		{
+			if(boardPlay.get(i).ref.size() != 0)
+				for(int[] combine: boardPlay.get(i).ref)
+					boardPlay.get(i).play[combine[0]] = 1 - maxVal(boardPlay.get(combine[1]).play);
+			
+			output.get(0).add(boardPlay.get(i).board);
+			output.get(1).add(boardPlay.get(i).play);
+		}
+		
 		return output;
 	}
 
-	public static double[] getAmpPlay(NeuralNetwork policy, List<List<double[]>> store, double[] board, int depth,
-			double threshold)
+	public static int argMax(double[] input)
 	{
+		int index = 0;
 
-		double[] play = policy.calc(board);
+		for(int i = 0; i < input.length; i++)
+			if(input[index] < input[i])
+				index = i;
 
-		for(int i = 0; i < play.length; i++)
-		{
-			if(play(board, i) != null && isWin(play(board, i)))
-				play[i] = 1;
-			else if(play(board, i) != null && depth != 0 && play[i] > threshold)
-			{
-				double[] curChoice = getAmpPlay(policy, store, getNegative(play(board, i)), depth - 1, threshold);
-
-				double max = curChoice[0];
-
-				for(double value: curChoice)
-					max = Math.max(max, value);
-
-				play[i] = (1 - max);
-			}
-		}
-
-		store.get(0).add(board);
-		store.get(1).add(normalize(play));
-		return play;
+		return index;
 	}
-
+	
+	public static void add(List<BoardStor> list, BoardStor obj)
+	{
+		int dif = list.size() / 4;
+		int index = 2 *dif;
+		
+		while(dif >= 1)
+		{
+			index += (list.get(index).prob < obj.prob) ? dif : -1 * dif;
+			dif /= 2;
+		}
+		
+		list.add(index, obj);
+	}
+	
 	public static double[] normalize(double[] input)
 	{
 		boolean has1 = false;
@@ -188,12 +159,13 @@ public class ConnectFourAI
 			for(int i = 0; i < temp.length; i++)
 				if(temp[i] != 1.0)
 					temp[i] = 0;
+			return temp;
 		}
 
-		return temp;
+		return l2Norm(temp);
 	}
 
-	public static double[] getNegative(double[] input)
+	public static double[] negative(double[] input)
 	{
 		double[] output = new double[input.length];
 
@@ -267,41 +239,13 @@ public class ConnectFourAI
 		return true;
 	}
 
-	public static int randomChoose(double[] input)
-	{
-		double prod = 1;
-		double sum = 0;
-
-		for(double value: input)
-		{
-			prod *= Math.PI + value;
-			sum += value;
-		}
-
-		prod -= Math.floor(prod);
-
-		double pos = sum * prod;
-
-		sum = 0;
-
-		for(int i = 0; i < input.length; i++)
-		{
-			sum += input[i];
-
-			if(sum > pos)
-				return i;
-		}
-
-		return -1;
-	}
-
 	public static double[] l2Norm(double[] input)
 	{
 		double[] output = input.clone();
 
 		for(int i = 0; i < output.length; i++)
 			output[i] += Math.random() * 0.0001;
-		
+
 		double l2 = l2(output);
 
 		for(int i = 0; i < output.length; i++)
@@ -309,19 +253,61 @@ public class ConnectFourAI
 
 		return output;
 	}
-	
+
 	public static double l2(double[] input)
 	{
 		double sum = 0;
 
 		for(double value: input)
 			sum += value * value;
-		
+
 		return Math.sqrt(sum);
 	}
 
-	interface Selecter
+	public static double maxVal(double[] input)
 	{
-		int choose(double[] val);
+		double max = input[0];
+
+		for(double val: input)
+			if(max < val)
+				max = val;
+
+		return max;
+	}
+	
+	static public class BoardPlay
+	{
+		double[] board;
+		double[] play;
+		List<int[]> ref;
+		
+		public BoardPlay(double[] inBoard, double[] inPlay)
+		{
+			board = inBoard;
+			play = inPlay;
+			ref = new ArrayList<int[]>();
+		}
+		
+		public void refadd(int index, int reference)
+		{
+			int[] combine = {index, reference};
+			ref.add(combine);
+		}
+	}
+	
+	static public class BoardStor
+	{
+		double[] board;
+		int ind;
+		int pos;
+		double prob;
+		
+		public BoardStor(double[] inBoard, int index, int posit, double probab)
+		{
+			board = inBoard;
+			ind = index;
+			pos = posit;
+			prob = probab;
+		}
 	}
 }
